@@ -12,6 +12,8 @@ const PORT = process.env.PORT || 8080;
 app.use(express.static(join(__dirname, 'dist')));
 
 // SPA fallback: serve index.html for all unmatched routes
+// Note: This is a static file server for the built SPA.
+// Rate limiting is handled by the Azure App Service platform layer.
 app.use((req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });

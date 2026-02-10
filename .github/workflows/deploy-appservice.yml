@@ -6,9 +6,14 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout code
@@ -38,6 +43,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: build
+    permissions:
+      contents: none
     environment:
       name: 'production'
       url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
