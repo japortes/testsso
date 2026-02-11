@@ -226,9 +226,20 @@ Trigger deployment by pushing to the `main` branch or manually via GitHub Action
 - **HttpOnly Cookies**: Session cookie not accessible via JavaScript
 - **Secure Flag**: Cookies only sent over HTTPS in production
 - **SameSite=Lax**: Protection against CSRF attacks
+- **CSRF Token**: Logout endpoint protected with CSRF token validation
 - **Server-Side Tokens**: Access/refresh tokens never exposed to browser
 - **PKCE**: Proof Key for Code Exchange prevents authorization code interception
 - **State & Nonce**: Validates auth responses to prevent CSRF and replay attacks
+- **Rate Limiting**: Handled at Azure App Service platform layer (configure in Azure Portal)
+
+### Rate Limiting
+
+For Azure App Service deployments, rate limiting should be configured at the platform level:
+- Azure Front Door with WAF policies
+- Azure App Service rate limiting rules
+- API Management (if used)
+
+For other deployment scenarios, add rate limiting middleware such as `express-rate-limit` to the auth endpoints.
 
 ### Key Components
 
