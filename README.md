@@ -56,6 +56,87 @@ The BFF pattern provides enhanced security compared to SPA-only authentication:
    - Enable ID tokens (optional, but recommended)
 6. Under "API permissions", ensure `User.Read` is granted
 
+### Azure AD B2C and External ID Considerations
+
+This application is configured for **Microsoft Entra ID (workforce)** authentication. If you're using **Azure AD B2C** or **Microsoft Entra External ID** (formerly Azure AD for customers) instead, be aware of the following differences:
+
+#### Discovery and Issuer Endpoints
+
+- **Entra ID (workforce)**: Uses a standard discovery endpoint:
+  ```
+  https://login.microsoftonline.com/{TENANT_ID}/v2.0/.well-known/openid-configuration
+  ```
+  
+- **Azure AD B2C**: Discovery endpoints are **policy-specific** (user-flow or custom policy):
+  ```
+  https://{tenant-name}.b2clogin.com/{tenant-name}.onmicrosoft.com/{policy-name}/v2.0/.well-known/openid-configuration
+  ```
+  Example: `https://contoso.b2clogin.com/contoso.onmicrosoft.com/B2C_1_signupsignin/v2.0/.well-known/openid-configuration`
+
+- **External ID**: Uses a tenant-specific endpoint similar to B2C:
+  ```
+  https://{tenant-name}.ciamlogin.com/{tenant-id}/v2.0/.well-known/openid-configuration
+  ```
+
+**Current Implementation**: The code in `server.js` assumes the standard Entra ID (workforce) discovery endpoint at `https://login.microsoftonline.com/{TENANT_ID}/v2.0`. To use B2C or External ID, you would need to modify the discovery URL initialization in `server.js` (lines 75-76).
+
+#### Claims Differences
+
+- **Standard Entra ID**: Claims include `oid` (object ID), `name`, `email`, `preferred_username`
+- **B2C/External ID**: May have different claim names depending on user flow/policy configuration:
+  - B2C often uses custom claims configured in the user flow
+  - `oid` may not be present; use `sub` as the unique identifier
+  - Email claims depend on identity provider configuration
+
+#### Scopes
+
+- **Entra ID (workforce)**: Supports Microsoft Graph scopes like `User.Read`
+- **B2C**: Typically uses custom API scopes (e.g., `https://{tenant}.onmicrosoft.com/{api-name}/{scope-name}`)
+- **External ID**: Similar to B2C, with custom API scopes for your backend APIs
+
+The current configuration requests `openid profile email User.Read` scopes, which work for Entra ID workforce scenarios.
+
+#### Silent SSO with `prompt=none`
+
+- **Entra ID (workforce)**: Silent SSO (`prompt=none`) works reliably when a user has an active session
+- **B2C**: Silent SSO behavior may vary depending on:
+  - Identity provider configuration (local accounts vs. social providers)
+  - Session management settings in the user flow
+  - Social provider session state
+- **External ID**: Similar considerations as B2C
+
+The `/auth/sso` endpoint uses `prompt=none` for silent authentication. If it fails, the app falls back to showing the manual "Sign In" button.
+
+#### Logout Endpoints
+
+- **Entra ID (workforce)**: 
+  ```
+  https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/logout
+  ```
+  
+- **B2C**: Policy-specific logout endpoint:
+  ```
+  https://{tenant-name}.b2clogin.com/{tenant-name}.onmicrosoft.com/{policy-name}/oauth2/v2.0/logout
+  ```
+
+- **External ID**: Tenant-specific logout:
+  ```
+  https://{tenant-name}.ciamlogin.com/{tenant-id}/oauth2/v2.0/logout
+  ```
+
+The current logout implementation (line 334 in `server.js`) uses the standard Entra ID logout URL.
+
+#### Migration Path
+
+To adapt this application for B2C or External ID:
+1. Update the discovery URL in `server.js` to use the policy-specific or tenant-specific endpoint
+2. Adjust the logout URL construction to match your identity provider
+3. Update requested scopes to match your API requirements
+4. Review and adjust claim mapping based on your user flow configuration
+5. Test silent SSO behavior with your identity provider
+
+**Note**: This documentation is for reference only. The current code is designed for Microsoft Entra ID (workforce) and would require modifications for B2C or External ID scenarios.
+
 ## Configuration
 
 ### Environment Variables
@@ -206,16 +287,24 @@ Trigger deployment by pushing to the `main` branch or manually via GitHub Action
 ### Authentication Flow
 
 1. **Initial Load**: SPA calls `GET /auth/me` to check if user is authenticated
-2. **Login Flow**:
+2. **Silent SSO Attempt** (if not authenticated):
+   - SPA automatically attempts silent SSO by redirecting to `/auth/sso`
+   - BFF generates PKCE challenge and redirects to Microsoft Entra ID with `prompt=none`
+   - If user has an active session with Entra ID, they are silently authenticated
+   - If SSO fails (no active session, interaction required, etc.), Entra ID returns an error
+   - On SSO failure, user is redirected back to `/?sso_failed=true`
+   - SPA sets a flag in sessionStorage to prevent SSO retry loops
+   - User sees the manual "Sign In" button
+3. **Interactive Login Flow** (if SSO fails or user clicks "Sign In"):
    - User clicks "Sign In" → navigate to `/auth/login`
-   - BFF generates PKCE challenge and redirects to Microsoft Entra ID
-   - User authenticates with Microsoft
+   - BFF generates PKCE challenge and redirects to Microsoft Entra ID (without `prompt=none`)
+   - User authenticates with Microsoft (may see login UI)
    - Microsoft redirects back to `/auth/callback` with authorization code
    - BFF exchanges code for tokens, validates state/nonce
    - BFF creates server-side session with user info
    - User redirected back to `/` (SPA homepage)
-3. **Authenticated State**: SPA displays user info fetched from session
-4. **Logout Flow**:
+4. **Authenticated State**: SPA displays user info fetched from session
+5. **Logout Flow**:
    - User clicks "Sign Out" → SPA calls `POST /auth/logout`
    - BFF destroys session and returns Entra logout URL
    - SPA redirects to Entra logout URL
@@ -244,7 +333,8 @@ For other deployment scenarios, add rate limiting middleware such as `express-ra
 ### Key Components
 
 - **`server.js`**: Express BFF with OIDC client and session management
-  - `/auth/login`: Initiates OIDC flow with PKCE
+  - `/auth/sso`: Initiates silent SSO flow with PKCE and `prompt=none`
+  - `/auth/login`: Initiates interactive OIDC flow with PKCE
   - `/auth/callback`: Handles code exchange and session creation
   - `/auth/me`: Returns current session status
   - `/auth/logout`: Destroys session and returns logout URL
