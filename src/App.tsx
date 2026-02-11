@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import './App.css';
 
 interface User {
@@ -23,12 +23,7 @@ function App() {
   });
   const [ssoAttempted, setSsoAttempted] = useState(false);
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
       // Check if SSO failed (query parameter from redirect)
       const urlParams = new URLSearchParams(window.location.search);
@@ -83,7 +78,12 @@ function App() {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  };
+  }, [ssoAttempted]);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const handleLogin = () => {
     // Navigate to login endpoint which will redirect to Entra ID
