@@ -13,13 +13,18 @@
   "dependencies": {
     "@azure/msal-browser": "^5.1.0",
     "@azure/msal-react": "^5.0.3",
+    "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
+    "express-session": "^1.18.1",
+    "openid-client": "^6.2.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@types/cookie-parser": "^1.4.7",
     "@types/express": "^5.0.6",
+    "@types/express-session": "^1.18.0",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
