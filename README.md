@@ -145,8 +145,8 @@ The BFF server requires the following environment variables:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `TENANT_ID` | Your Azure AD tenant ID | `1f868b4f-c295-4511-b724-3aacc6d3d2c7` |
-| `CLIENT_ID` | Your Azure AD app client ID | `40599c5a-156b-447f-a9f3-2f58016c4ec7` |
+| `TENANT_ID` | Your Azure AD tenant ID | `00000000-0000-0000-0000-000000000000` |
+| `CLIENT_ID` | Your Azure AD app client ID | `11111111-1111-1111-1111-111111111111` |
 | `CLIENT_SECRET` | Your Azure AD app client secret | `your-secret-value` |
 | `BASE_URL` | Base URL of your application | `http://localhost:8080` or `https://your-app.azurewebsites.net` |
 | `SESSION_SECRET` | Secret for session encryption | Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
@@ -278,7 +278,7 @@ The server will run on port 8080 (or `PORT` environment variable) and serve the 
 
 The GitHub Actions workflow (`.github/workflows/deploy-appservice.yml`) automatically:
 1. Builds the application
-2. Deploys to Azure App Service named `mosaikreacttst`
+2. Deploys to your Azure App Service
 
 Trigger deployment by pushing to the `main` branch or manually via GitHub Actions.
 

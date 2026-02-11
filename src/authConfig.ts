@@ -11,8 +11,8 @@ declare global {
 // Export the MSAL configuration loaded from window
 export const msalConfig: Configuration = window.msalConfig || {
   auth: {
-    clientId: "40599c5a-156b-447f-a9f3-2f58016c4ec7",
-    authority: "https://login.microsoftonline.com/1f868b4f-c295-4511-b724-3aacc6d3d2c7",
+    clientId: "YOUR_CLIENT_ID_HERE",
+    authority: "https://login.microsoftonline.com/YOUR_TENANT_ID_HERE",
     redirectUri: window.location.origin,
   },
   cache: {
