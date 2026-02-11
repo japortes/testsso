@@ -206,14 +206,23 @@ app.get('/auth/callback', async (req, res) => {
         return res.redirect('/?sso_failed=true');
       }
       
-      // For regular login failures, show error
-      return res.status(400).send(`Authentication failed: ${error} - ${errorDescription}`);
+      // For regular login failures, return JSON error (safe content-type)
+      return res.status(400).json({ 
+        error: 'Authentication failed',
+        errorCode: error,
+        errorDescription: errorDescription 
+      });
     }
     
     // Validate state
     const state = currentUrl.searchParams.get('state');
     if (!req.session.state || state !== req.session.state) {
       console.error('❌ State mismatch');
+      // Clean up session data
+      delete req.session.codeVerifier;
+      delete req.session.state;
+      delete req.session.nonce;
+      delete req.session.isSso;
       return res.status(400).send('State mismatch - possible CSRF attack');
     }
     

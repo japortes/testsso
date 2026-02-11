@@ -21,10 +21,6 @@ function App() {
     authenticated: false,
     loading: true,
   });
-  const [ssoAttempted, setSsoAttempted] = useState(() => {
-    // Check sessionStorage for previous SSO attempt
-    return sessionStorage.getItem('ssoAttempted') === 'true';
-  });
 
   const checkAuth = useCallback(async () => {
     try {
@@ -33,7 +29,6 @@ function App() {
       if (urlParams.get('sso_failed') === 'true') {
         console.log('SSO failed, showing manual login option');
         sessionStorage.setItem('ssoAttempted', 'true');
-        setSsoAttempted(true);
         // Clean up URL
         window.history.replaceState({}, document.title, '/');
         setAuthState({
@@ -64,10 +59,10 @@ function App() {
         });
       } else {
         // Not authenticated - attempt SSO if not already attempted
+        const ssoAttempted = sessionStorage.getItem('ssoAttempted') === 'true';
         if (!ssoAttempted) {
           console.log('Attempting SSO...');
           sessionStorage.setItem('ssoAttempted', 'true');
-          setSsoAttempted(true);
           // Redirect to SSO endpoint
           window.location.href = '/auth/sso';
         } else {
@@ -85,7 +80,7 @@ function App() {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  }, [ssoAttempted]);
+  }, []);
 
   // Check authentication status on mount
   useEffect(() => {
