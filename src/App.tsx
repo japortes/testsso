@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import './App.css';
 
 interface User {
@@ -22,13 +22,22 @@ function App() {
     loading: true,
   });
 
-  // Check authentication status on mount
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     try {
+      // Check if SSO failed (query parameter from redirect)
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('sso_failed') === 'true') {
+        console.log('SSO failed, showing manual login option');
+        sessionStorage.setItem('ssoAttempted', 'true');
+        // Clean up URL
+        window.history.replaceState({}, document.title, '/');
+        setAuthState({
+          authenticated: false,
+          loading: false,
+        });
+        return;
+      }
+      
       const response = await fetch('/auth/me', {
         credentials: 'include',
       });
@@ -38,12 +47,31 @@ function App() {
       }
       
       const data = await response.json();
-      setAuthState({
-        authenticated: data.authenticated,
-        user: data.user,
-        csrfToken: data.csrfToken,
-        loading: false,
-      });
+      
+      if (data.authenticated) {
+        // Clear SSO attempt flag on successful authentication
+        sessionStorage.removeItem('ssoAttempted');
+        setAuthState({
+          authenticated: data.authenticated,
+          user: data.user,
+          csrfToken: data.csrfToken,
+          loading: false,
+        });
+      } else {
+        // Not authenticated - attempt SSO if not already attempted
+        const ssoAttempted = sessionStorage.getItem('ssoAttempted') === 'true';
+        if (!ssoAttempted) {
+          console.log('Attempting SSO...');
+          sessionStorage.setItem('ssoAttempted', 'true');
+          // Redirect to SSO endpoint
+          window.location.href = '/auth/sso';
+        } else {
+          setAuthState({
+            authenticated: false,
+            loading: false,
+          });
+        }
+      }
     } catch (error) {
       console.error('Auth check error:', error);
       setAuthState({
@@ -52,7 +80,12 @@ function App() {
         error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
-  };
+  }, []);
+
+  // Check authentication status on mount
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
 
   const handleLogin = () => {
     // Navigate to login endpoint which will redirect to Entra ID
