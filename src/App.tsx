@@ -21,7 +21,10 @@ function App() {
     authenticated: false,
     loading: true,
   });
-  const [ssoAttempted, setSsoAttempted] = useState(false);
+  const [ssoAttempted, setSsoAttempted] = useState(() => {
+    // Check sessionStorage for previous SSO attempt
+    return sessionStorage.getItem('ssoAttempted') === 'true';
+  });
 
   const checkAuth = useCallback(async () => {
     try {
@@ -29,6 +32,7 @@ function App() {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get('sso_failed') === 'true') {
         console.log('SSO failed, showing manual login option');
+        sessionStorage.setItem('ssoAttempted', 'true');
         setSsoAttempted(true);
         // Clean up URL
         window.history.replaceState({}, document.title, '/');
@@ -50,6 +54,8 @@ function App() {
       const data = await response.json();
       
       if (data.authenticated) {
+        // Clear SSO attempt flag on successful authentication
+        sessionStorage.removeItem('ssoAttempted');
         setAuthState({
           authenticated: data.authenticated,
           user: data.user,
@@ -60,6 +66,7 @@ function App() {
         // Not authenticated - attempt SSO if not already attempted
         if (!ssoAttempted) {
           console.log('Attempting SSO...');
+          sessionStorage.setItem('ssoAttempted', 'true');
           setSsoAttempted(true);
           // Redirect to SSO endpoint
           window.location.href = '/auth/sso';

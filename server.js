@@ -115,7 +115,9 @@ app.get('/auth/sso', async (req, res) => {
     req.session.nonce = nonce;
     req.session.isSso = true; // Mark as SSO attempt
     
-    await new Promise((resolve) => req.session.save(resolve));
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
     
     // Build authorization URL with prompt=none for silent authentication
     const parameters = {
@@ -134,7 +136,7 @@ app.get('/auth/sso', async (req, res) => {
     res.redirect(redirectTo.href);
   } catch (error) {
     console.error('SSO error:', error);
-    res.status(500).json({ error: 'Failed to initiate SSO', message: error.message });
+    res.status(500).json({ error: 'Failed to initiate SSO' });
   }
 });
 
@@ -155,7 +157,9 @@ app.get('/auth/login', async (req, res) => {
     req.session.state = state;
     req.session.nonce = nonce;
     
-    await new Promise((resolve) => req.session.save(resolve));
+    await new Promise((resolve, reject) => {
+      req.session.save((err) => (err ? reject(err) : resolve()));
+    });
     
     // Build authorization URL
     const parameters = {
@@ -173,7 +177,7 @@ app.get('/auth/login', async (req, res) => {
     res.redirect(redirectTo.href);
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({ error: 'Failed to initiate login', message: error.message });
+    res.status(500).json({ error: 'Failed to initiate login' });
   }
 });
 
@@ -274,7 +278,7 @@ app.get('/auth/callback', async (req, res) => {
       return res.redirect('/?sso_failed=true');
     }
     
-    res.status(500).send(`Authentication failed: ${error.message}`);
+    res.status(500).send('Authentication failed. Please try again.');
   }
 });
 
