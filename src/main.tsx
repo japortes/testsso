@@ -5,9 +5,12 @@ import { msalInstance, initializeMsal } from './msalInstance'
 import './index.css'
 import App from './App.tsx'
 
+// Create root once
+const root = createRoot(document.getElementById('root')!);
+
 // Initialize MSAL before rendering the app
 initializeMsal().then(() => {
-  createRoot(document.getElementById('root')!).render(
+  root.render(
     <StrictMode>
       <MsalProvider instance={msalInstance}>
         <App />
@@ -17,12 +20,12 @@ initializeMsal().then(() => {
 }).catch((error) => {
   console.error('Failed to initialize MSAL:', error);
   // Render error message if initialization fails
-  createRoot(document.getElementById('root')!).render(
+  root.render(
     <StrictMode>
-      <div style={{ padding: '2rem', textAlign: 'center', fontFamily: 'sans-serif' }}>
+      <div className="error-container">
         <h1>Initialization Error</h1>
         <p>Failed to initialize the authentication system. Please refresh the page to try again.</p>
-        <p style={{ color: '#666', fontSize: '0.9rem' }}>If the problem persists, please contact support.</p>
+        <p className="error-detail">If the problem persists, please contact support.</p>
       </div>
     </StrictMode>,
   );
