@@ -20,11 +20,13 @@ initializeMsal().then(() => {
 }).catch((error) => {
   console.error('Failed to initialize MSAL:', error);
   // Render error message if initialization fails
+  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
   root.render(
     <StrictMode>
       <div className="error-container">
         <h1>Initialization Error</h1>
         <p>Failed to initialize the authentication system. Please refresh the page to try again.</p>
+        <p className="error-detail">Error: {errorMessage}</p>
         <p className="error-detail">If the problem persists, please contact support.</p>
       </div>
     </StrictMode>,
