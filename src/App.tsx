@@ -13,6 +13,7 @@ interface AuthState {
   user?: User;
   loading: boolean;
   error?: string;
+  csrfToken?: string;
 }
 
 function App() {
@@ -40,6 +41,7 @@ function App() {
       setAuthState({
         authenticated: data.authenticated,
         user: data.user,
+        csrfToken: data.csrfToken,
         loading: false,
       });
     } catch (error) {
@@ -62,6 +64,10 @@ function App() {
       const response = await fetch('/auth/logout', {
         method: 'POST',
         credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ csrfToken: authState.csrfToken }),
       });
       
       if (!response.ok) {

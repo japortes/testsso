@@ -93,6 +93,9 @@ getOidcConfig().catch((err) => {
 });
 
 // Auth endpoints
+// Note: Rate limiting is handled by Azure App Service platform layer.
+// For local development or other deployment scenarios, consider adding
+// express-rate-limit middleware to these endpoints.
 app.get('/auth/login', async (req, res) => {
   try {
     const config_oidc = await getOidcConfig();
@@ -196,9 +199,15 @@ app.get('/auth/callback', async (req, res) => {
 
 app.get('/auth/me', (req, res) => {
   if (req.session.authenticated && req.session.user) {
+    // Generate CSRF token for logout (stored in session)
+    if (!req.session.csrfToken) {
+      req.session.csrfToken = crypto.randomBytes(32).toString('hex');
+    }
+    
     res.json({
       authenticated: true,
       user: req.session.user,
+      csrfToken: req.session.csrfToken, // Provide token to client for logout
     });
   } else {
     res.json({
@@ -208,6 +217,13 @@ app.get('/auth/me', (req, res) => {
 });
 
 app.post('/auth/logout', async (req, res) => {
+  // CSRF protection: validate token from request body or header
+  const csrfToken = req.body.csrfToken || req.headers['x-csrf-token'];
+  if (!req.session.csrfToken || csrfToken !== req.session.csrfToken) {
+    console.error('❌ CSRF token mismatch on logout');
+    return res.status(403).json({ error: 'Invalid CSRF token' });
+  }
+  
   const idToken = req.session.tokens?.idToken;
   
   // Destroy session
