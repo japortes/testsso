@@ -12,8 +12,11 @@ function App() {
   useEffect(() => {
     if (!isAuthenticated && inProgress === InteractionStatus.None) {
       instance.ssoSilent(loginRequest).catch(() => {
-        // Silent sign-in failed, user will need to click login
-        console.log('Silent sign-in failed. User interaction required.');
+        // Silent sign-in failed, automatically redirect to interactive login
+        console.log('Silent sign-in failed. Redirecting to interactive login...');
+        instance.loginRedirect(loginRequest).catch((e) => {
+          console.error('Login redirect failed:', e);
+        });
       });
     }
   }, [isAuthenticated, inProgress, instance]);
@@ -52,7 +55,7 @@ function App() {
 
         <UnauthenticatedTemplate>
           <div className="login-container">
-            <p>You are not signed in. Please sign in to continue.</p>
+            <p>Signing you in...</p>
             <button onClick={handleLogin} className="login-button">
               Sign In
             </button>
