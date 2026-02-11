@@ -9,6 +9,8 @@ declare global {
 }
 
 // Export the MSAL configuration loaded from window
+// Note: These fallback values must be replaced in public/config.js
+// The actual configuration is loaded at runtime from window.msalConfig
 export const msalConfig: Configuration = window.msalConfig || {
   auth: {
     clientId: "YOUR_CLIENT_ID_HERE",
