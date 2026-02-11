@@ -1,7 +1,7 @@
 import express from 'express';
 import session from 'express-session';
 import cookieParser from 'cookie-parser';
-import { Issuer, generators } from 'openid-client';
+import * as openidClient from 'openid-client';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'crypto';
@@ -56,49 +56,46 @@ app.use(
   })
 );
 
-// OIDC client setup
-let oidcClient = null;
+// OIDC configuration
+let oidcConfig = null;
 
-async function getOidcClient() {
-  if (oidcClient) return oidcClient;
+async function getOidcConfig() {
+  if (oidcConfig) return oidcConfig;
 
   try {
-    const issuer = await Issuer.discover(
-      `https://login.microsoftonline.com/${config.tenantId}/v2.0`
+    const issuerUrl = `https://login.microsoftonline.com/${config.tenantId}/v2.0`;
+    const discoveredConfig = await openidClient.discovery(
+      new URL(issuerUrl),
+      config.clientId,
+      config.clientSecret
     );
     
-    oidcClient = new issuer.Client({
-      client_id: config.clientId,
-      client_secret: config.clientSecret,
-      redirect_uris: [`${config.baseUrl}${config.callbackPath}`],
-      response_types: ['code'],
-    });
-
-    console.log('✅ OIDC client initialized successfully');
-    return oidcClient;
+    oidcConfig = discoveredConfig;
+    console.log('✅ OIDC configuration initialized successfully');
+    return oidcConfig;
   } catch (error) {
-    console.error('❌ Failed to initialize OIDC client:', error.message);
+    console.error('❌ Failed to initialize OIDC configuration:', error.message);
     throw error;
   }
 }
 
-// Initialize OIDC client at startup
-getOidcClient().catch((err) => {
-  console.error('Failed to initialize OIDC client:', err);
+// Initialize OIDC at startup
+getOidcConfig().catch((err) => {
+  console.error('Failed to initialize OIDC configuration:', err);
 });
 
 // Auth endpoints
 app.get('/auth/login', async (req, res) => {
   try {
-    const client = await getOidcClient();
+    const config_oidc = await getOidcConfig();
     
     // Generate PKCE verifier and challenge
-    const codeVerifier = generators.codeVerifier();
-    const codeChallenge = generators.codeChallenge(codeVerifier);
+    const codeVerifier = openidClient.randomPKCECodeVerifier();
+    const codeChallenge = await openidClient.calculatePKCECodeChallenge(codeVerifier);
     
     // Generate state and nonce for security
-    const state = generators.state();
-    const nonce = generators.nonce();
+    const state = openidClient.randomState();
+    const nonce = openidClient.randomNonce();
     
     // Store in session for verification in callback
     req.session.codeVerifier = codeVerifier;
@@ -108,16 +105,19 @@ app.get('/auth/login', async (req, res) => {
     await new Promise((resolve) => req.session.save(resolve));
     
     // Build authorization URL
-    const authorizationUrl = client.authorizationUrl({
+    const parameters = {
+      redirect_uri: `${config.baseUrl}${config.callbackPath}`,
       scope: 'openid profile email User.Read',
       code_challenge: codeChallenge,
       code_challenge_method: 'S256',
       state: state,
       nonce: nonce,
-    });
+    };
     
-    console.log('🔐 Redirecting to login:', authorizationUrl);
-    res.redirect(authorizationUrl);
+    const redirectTo = openidClient.buildAuthorizationUrl(config_oidc, parameters);
+    
+    console.log('🔐 Redirecting to login');
+    res.redirect(redirectTo.href);
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Failed to initiate login', message: error.message });
@@ -126,28 +126,29 @@ app.get('/auth/login', async (req, res) => {
 
 app.get('/auth/callback', async (req, res) => {
   try {
-    const client = await getOidcClient();
-    const params = client.callbackParams(req);
+    const config_oidc = await getOidcConfig();
+    const currentUrl = new URL(`${config.baseUrl}${req.originalUrl}`);
     
     // Validate state
-    if (!req.session.state || params.state !== req.session.state) {
+    const state = openidClient.getURLSearchParam(currentUrl, 'state');
+    if (!req.session.state || state !== req.session.state) {
       console.error('❌ State mismatch');
       return res.status(400).send('State mismatch - possible CSRF attack');
     }
     
     // Exchange code for tokens
-    const tokenSet = await client.callback(
-      `${config.baseUrl}${config.callbackPath}`,
-      params,
+    const tokens = await openidClient.authorizationCodeGrant(
+      config_oidc,
+      currentUrl,
       {
-        code_verifier: req.session.codeVerifier,
-        state: req.session.state,
-        nonce: req.session.nonce,
+        pkceCodeVerifier: req.session.codeVerifier,
+        expectedNonce: req.session.nonce,
+        expectedState: req.session.state,
       }
     );
     
     // Get user claims from ID token
-    const claims = tokenSet.claims();
+    const claims = openidClient.getValidatedIdTokenClaims(tokens);
     
     // Store user info and tokens in session
     req.session.user = {
@@ -157,10 +158,10 @@ app.get('/auth/callback', async (req, res) => {
       oid: claims.oid,
     };
     req.session.tokens = {
-      accessToken: tokenSet.access_token,
-      refreshToken: tokenSet.refresh_token,
-      idToken: tokenSet.id_token,
-      expiresAt: tokenSet.expires_at,
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      idToken: tokens.id_token,
+      expiresAt: tokens.expires_at,
     };
     req.session.authenticated = true;
     
