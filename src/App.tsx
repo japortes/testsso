@@ -21,6 +21,7 @@ function App() {
     authenticated: false,
     loading: true,
   });
+  const [ssoAttempted, setSsoAttempted] = useState(false);
 
   // Check authentication status on mount
   useEffect(() => {
@@ -29,6 +30,20 @@ function App() {
 
   const checkAuth = async () => {
     try {
+      // Check if SSO failed (query parameter from redirect)
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('sso_failed') === 'true') {
+        console.log('SSO failed, showing manual login option');
+        setSsoAttempted(true);
+        // Clean up URL
+        window.history.replaceState({}, document.title, '/');
+        setAuthState({
+          authenticated: false,
+          loading: false,
+        });
+        return;
+      }
+      
       const response = await fetch('/auth/me', {
         credentials: 'include',
       });
@@ -38,12 +53,28 @@ function App() {
       }
       
       const data = await response.json();
-      setAuthState({
-        authenticated: data.authenticated,
-        user: data.user,
-        csrfToken: data.csrfToken,
-        loading: false,
-      });
+      
+      if (data.authenticated) {
+        setAuthState({
+          authenticated: data.authenticated,
+          user: data.user,
+          csrfToken: data.csrfToken,
+          loading: false,
+        });
+      } else {
+        // Not authenticated - attempt SSO if not already attempted
+        if (!ssoAttempted) {
+          console.log('Attempting SSO...');
+          setSsoAttempted(true);
+          // Redirect to SSO endpoint
+          window.location.href = '/auth/sso';
+        } else {
+          setAuthState({
+            authenticated: false,
+            loading: false,
+          });
+        }
+      }
     } catch (error) {
       console.error('Auth check error:', error);
       setAuthState({

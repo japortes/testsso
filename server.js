@@ -97,6 +97,47 @@ getOidcConfig().catch((err) => {
 // Note: Rate limiting is handled by Azure App Service platform layer.
 // For local development or other deployment scenarios, consider adding
 // express-rate-limit middleware to these endpoints.
+app.get('/auth/sso', async (req, res) => {
+  try {
+    const config_oidc = await getOidcConfig();
+    
+    // Generate PKCE verifier and challenge
+    const codeVerifier = openidClient.randomPKCECodeVerifier();
+    const codeChallenge = await openidClient.calculatePKCECodeChallenge(codeVerifier);
+    
+    // Generate state and nonce for security
+    const state = openidClient.randomState();
+    const nonce = openidClient.randomNonce();
+    
+    // Store in session for verification in callback
+    req.session.codeVerifier = codeVerifier;
+    req.session.state = state;
+    req.session.nonce = nonce;
+    req.session.isSso = true; // Mark as SSO attempt
+    
+    await new Promise((resolve) => req.session.save(resolve));
+    
+    // Build authorization URL with prompt=none for silent authentication
+    const parameters = {
+      redirect_uri: `${config.baseUrl}${config.callbackPath}`,
+      scope: 'openid profile email User.Read',
+      code_challenge: codeChallenge,
+      code_challenge_method: 'S256',
+      state: state,
+      nonce: nonce,
+      prompt: 'none', // Silent authentication
+    };
+    
+    const redirectTo = openidClient.buildAuthorizationUrl(config_oidc, parameters);
+    
+    console.log('🔄 Attempting silent SSO');
+    res.redirect(redirectTo.href);
+  } catch (error) {
+    console.error('SSO error:', error);
+    res.status(500).json({ error: 'Failed to initiate SSO', message: error.message });
+  }
+});
+
 app.get('/auth/login', async (req, res) => {
   try {
     const config_oidc = await getOidcConfig();
@@ -140,6 +181,30 @@ app.get('/auth/callback', async (req, res) => {
   try {
     const config_oidc = await getOidcConfig();
     const currentUrl = new URL(`${config.baseUrl}${req.originalUrl}`);
+    const isSso = req.session.isSso === true;
+    
+    // Check for error parameter (SSO failure)
+    const error = currentUrl.searchParams.get('error');
+    const errorDescription = currentUrl.searchParams.get('error_description');
+    
+    if (error) {
+      console.log(`🔄 SSO failed: ${error} - ${errorDescription}`);
+      
+      // Clean up session data
+      delete req.session.codeVerifier;
+      delete req.session.state;
+      delete req.session.nonce;
+      delete req.session.isSso;
+      
+      // If this was an SSO attempt (prompt=none), redirect back to app
+      // The frontend will show the manual login button
+      if (isSso) {
+        return res.redirect('/?sso_failed=true');
+      }
+      
+      // For regular login failures, show error
+      return res.status(400).send(`Authentication failed: ${error} - ${errorDescription}`);
+    }
     
     // Validate state
     const state = currentUrl.searchParams.get('state');
@@ -187,13 +252,28 @@ app.get('/auth/callback', async (req, res) => {
     delete req.session.codeVerifier;
     delete req.session.state;
     delete req.session.nonce;
+    delete req.session.isSso;
     
-    console.log('✅ User authenticated:', req.session.user.email);
+    if (isSso) {
+      console.log('✅ SSO successful:', req.session.user.email);
+    } else {
+      console.log('✅ User authenticated:', req.session.user.email);
+    }
     
     // Redirect back to app
     res.redirect('/');
   } catch (error) {
     console.error('Callback error:', error);
+    
+    // If this was an SSO attempt, redirect with error flag
+    if (req.session.isSso) {
+      delete req.session.codeVerifier;
+      delete req.session.state;
+      delete req.session.nonce;
+      delete req.session.isSso;
+      return res.redirect('/?sso_failed=true');
+    }
+    
     res.status(500).send(`Authentication failed: ${error.message}`);
   }
 });
