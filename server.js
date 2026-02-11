@@ -53,9 +53,10 @@ app.use(
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
+    proxy: true,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      secure: true,
       sameSite: 'lax',
       path: '/',
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
@@ -141,7 +142,7 @@ app.get('/auth/callback', async (req, res) => {
     const currentUrl = new URL(`${config.baseUrl}${req.originalUrl}`);
     
     // Validate state
-    const state = openidClient.getURLSearchParam(currentUrl, 'state');
+    const state = currentUrl.searchParams.get('state');
     if (!req.session.state || state !== req.session.state) {
       console.error('❌ State mismatch');
       return res.status(400).send('State mismatch - possible CSRF attack');
