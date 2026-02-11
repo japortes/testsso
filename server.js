@@ -160,7 +160,7 @@ app.get('/auth/callback', async (req, res) => {
     );
     
     // Get user claims from ID token
-    const claims = openidClient.getValidatedIdTokenClaims(tokens);
+    const claims = tokens.claims();
     
     // Store user info and tokens in session
     req.session.user = {
