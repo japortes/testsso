@@ -18,9 +18,17 @@ const config = {
   clientId: process.env.CLIENT_ID || 'YOUR_CLIENT_ID_HERE',
   clientSecret: process.env.CLIENT_SECRET || 'YOUR_CLIENT_SECRET_HERE',
   baseUrl: process.env.BASE_URL || 'http://localhost:8080',
-  sessionSecret: process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex'),
+  sessionSecret: process.env.SESSION_SECRET,
   callbackPath: '/auth/callback',
 };
+
+// Generate session secret only for development (to avoid startup failure)
+if (!config.sessionSecret) {
+  config.sessionSecret = crypto.randomBytes(32).toString('hex');
+  console.warn('⚠️  WARNING: SESSION_SECRET not set. Generated a temporary session secret.');
+  console.warn('   All sessions will be invalidated on server restart.');
+  console.warn('   Set SESSION_SECRET environment variable for production.');
+}
 
 // Validate required configuration
 if (config.tenantId === 'YOUR_TENANT_ID_HERE' || 
@@ -165,6 +173,12 @@ app.get('/auth/callback', async (req, res) => {
     };
     req.session.authenticated = true;
     
+    // Note: Token refresh is not implemented. When access token expires,
+    // users will need to re-authenticate. To implement refresh:
+    // 1. Check token expiry in a middleware before protected API calls
+    // 2. Use openidClient.refreshTokenGrant() with the refresh token
+    // 3. Update session with new tokens
+    
     // Clean up temporary session data
     delete req.session.codeVerifier;
     delete req.session.state;
@@ -206,8 +220,11 @@ app.post('/auth/logout', async (req, res) => {
   // Clear session cookie
   res.clearCookie('session');
   
-  // Build logout URL for Entra ID
-  const logoutUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(config.baseUrl)}`;
+  // Build logout URL for Entra ID with id_token_hint for proper single logout
+  let logoutUrl = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(config.baseUrl)}`;
+  if (idToken) {
+    logoutUrl += `&id_token_hint=${encodeURIComponent(idToken)}`;
+  }
   
   console.log('👋 User logged out');
   res.json({ logoutUrl });

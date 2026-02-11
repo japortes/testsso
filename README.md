@@ -278,9 +278,25 @@ This indicates a possible CSRF attack or session issue:
 - **Language**: TypeScript
 - **Authentication**: OpenID Connect (OIDC) via openid-client
 - **Server**: Express 5
-- **Session Management**: express-session with MemoryStore (dev) / Redis or Azure Blob (prod)
+- **Session Management**: express-session with MemoryStore (suitable for single-instance deployments)
 - **Deployment**: Azure App Service (Linux)
 - **CI/CD**: GitHub Actions
+
+## Production Considerations
+
+### Session Storage
+
+The current implementation uses the default MemoryStore for sessions, which is suitable for:
+- Development environments
+- Single-instance deployments
+- Testing
+
+For production environments with multiple server instances or high availability requirements, consider implementing a persistent session store:
+- **Redis**: Use `connect-redis` package
+- **Azure Blob Storage**: Use custom or third-party session store
+- **Azure Cosmos DB**: Use `connect-cosmosdb` package
+
+Note: Session store configuration is intentionally kept simple in this implementation to minimize complexity. Choose and implement a persistent store based on your specific deployment requirements.
 
 ## License
 
