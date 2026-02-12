@@ -13,12 +13,14 @@
   "dependencies": {
     "@azure/msal-browser": "^5.1.0",
     "@azure/msal-react": "^5.0.3",
+    "connect-redis": "^9.0.0",
     "cookie-parser": "^1.4.7",
     "express": "^5.2.1",
     "express-session": "^1.18.1",
     "openid-client": "^6.2.0",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "redis": "^5.10.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
