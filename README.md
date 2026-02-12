@@ -188,6 +188,8 @@ Configure environment variables in Azure Portal:
    - `CLIENT_SECRET`: Your client secret
    - `BASE_URL`: `https://your-app.azurewebsites.net`
    - `SESSION_SECRET`: Generate a strong random secret
+   - `REDIS_ENABLED`: Set to `true` if using Redis (recommended for production)
+   - `REDIS_URL`: Your Redis connection string (see Redis Session Store section)
 3. Save and restart the app service
 
 ## Installation
@@ -379,7 +381,7 @@ This indicates a possible CSRF attack or session issue:
 - **Language**: TypeScript
 - **Authentication**: OpenID Connect (OIDC) via openid-client
 - **Server**: Express 5
-- **Session Management**: express-session with MemoryStore (suitable for single-instance deployments)
+- **Session Management**: express-session with MemoryStore (development) or Redis (production)
 - **Deployment**: Azure App Service (Linux)
 - **CI/CD**: GitHub Actions
 
@@ -387,17 +389,89 @@ This indicates a possible CSRF attack or session issue:
 
 ### Session Storage
 
-The current implementation uses the default MemoryStore for sessions, which is suitable for:
-- Development environments
-- Single-instance deployments
-- Testing
+#### MemoryStore (Default)
 
-For production environments with multiple server instances or high availability requirements, consider implementing a persistent session store:
-- **Redis**: Use `connect-redis` package
-- **Azure Blob Storage**: Use custom or third-party session store
-- **Azure Cosmos DB**: Use `connect-cosmosdb` package
+By default, the application uses the in-memory session store (MemoryStore), which is suitable for:
+- **Development environments**
+- **Single-instance deployments**
+- **Testing and prototyping**
 
-Note: Session store configuration is intentionally kept simple in this implementation to minimize complexity. Choose and implement a persistent store based on your specific deployment requirements.
+⚠️ **Important:** MemoryStore is **not suitable** for production deployments with multiple server instances. Sessions are not shared across instances, and all sessions will be lost on server restart.
+
+#### Redis Session Store (Recommended for Production)
+
+For production environments with multiple server instances, load balancing, or high availability requirements, Redis is the recommended session store.
+
+**Benefits:**
+- Sessions persist across server restarts
+- Sessions are shared across multiple server instances
+- Improved scalability and reliability
+- Optional TTL (time-to-live) for automatic session expiration
+
+**Configuration:**
+
+Set the following environment variables to enable Redis:
+
+```bash
+# Enable Redis session storage
+REDIS_ENABLED=true
+
+# Redis connection URL
+# Local development with Docker:
+REDIS_URL=redis://localhost:6379
+
+# Azure Cache for Redis (with SSL):
+REDIS_URL=rediss://your-cache-name.redis.cache.windows.net:6380,password=your-access-key,abortConnect=false,ssl=true
+
+# Optional: Session key prefix (default: sess:)
+REDIS_PREFIX=sess:
+```
+
+**Local Development with Redis:**
+
+Run Redis locally using Docker:
+
+```bash
+# Start Redis in a Docker container
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+
+# Set environment variables
+export REDIS_ENABLED=true
+export REDIS_URL=redis://localhost:6379
+
+# Build and start the server
+npm run build
+npm start
+```
+
+**Azure Cache for Redis:**
+
+1. Create an Azure Cache for Redis instance in the Azure Portal
+2. Navigate to your Redis cache > Access keys
+3. Copy the Primary connection string
+4. Configure your App Service with these application settings:
+   ```
+   REDIS_ENABLED=true
+   REDIS_URL=rediss://your-cache-name.redis.cache.windows.net:6380,password=your-access-key,abortConnect=false,ssl=true
+   ```
+
+**Fallback Behavior:**
+
+If Redis is enabled but the connection fails (e.g., Redis server is unavailable, invalid URL, network issues), the application will:
+1. Log an error message
+2. Automatically fall back to MemoryStore
+3. Continue running (graceful degradation)
+
+This ensures the application remains available even if Redis is temporarily unavailable, though sessions will not be shared across instances.
+
+#### Other Session Store Options
+
+For specialized scenarios, you can also implement:
+- **Azure Blob Storage**: Custom or third-party session store
+- **Azure Cosmos DB**: Use `connect-cosmosdb` or similar packages
+- **MongoDB**: Use `connect-mongo`
+
+Note: These alternatives are not implemented in this codebase but can be added following the same pattern as the Redis implementation.
 
 ## License
 

@@ -5,6 +5,8 @@ import * as openidClient from 'openid-client';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import crypto from 'crypto';
+import { createClient } from 'redis';
+import { RedisStore } from 'connect-redis';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -20,6 +22,11 @@ const config = {
   baseUrl: process.env.BASE_URL || 'http://localhost:8080',
   sessionSecret: process.env.SESSION_SECRET,
   callbackPath: '/auth/callback',
+  redis: {
+    enabled: process.env.REDIS_ENABLED === 'true',
+    url: process.env.REDIS_URL,
+    prefix: process.env.REDIS_PREFIX || 'sess:',
+  },
 };
 
 // Generate session secret only for development (to avoid startup failure)
@@ -41,29 +48,115 @@ if (config.tenantId === 'YOUR_TENANT_ID_HERE' ||
 // Trust proxy for Azure App Service (enables secure cookies behind proxy)
 app.set('trust proxy', 1);
 
+// Initialize Redis client (if enabled)
+let redisClient = null;
+let sessionStore = null;
+
+async function initializeRedis() {
+  if (config.redis.enabled) {
+    if (!config.redis.url) {
+      console.warn('⚠️  WARNING: REDIS_ENABLED is true but REDIS_URL is not set.');
+      console.warn('   Falling back to MemoryStore for session storage.');
+      return;
+    }
+    
+    try {
+      redisClient = createClient({
+        url: config.redis.url,
+        socket: {
+          connectTimeout: 5000, // 5 second timeout
+          reconnectStrategy: false, // Disable auto-reconnect during initial connection
+        },
+      });
+
+      redisClient.on('error', (err) => {
+        console.error('❌ Redis client error:', err.message);
+      });
+
+      redisClient.on('connect', () => {
+        console.log('🔗 Redis client connecting...');
+      });
+
+      redisClient.on('ready', () => {
+        console.log('✅ Redis client connected and ready');
+      });
+
+      // Connect to Redis
+      await redisClient.connect();
+
+      // Initialize RedisStore
+      sessionStore = new RedisStore({
+        client: redisClient,
+        prefix: config.redis.prefix,
+      });
+
+      console.log(`✅ Redis session store initialized (prefix: ${config.redis.prefix})`);
+    } catch (error) {
+      console.error('❌ Failed to connect to Redis:', error.message);
+      console.warn('⚠️  Falling back to MemoryStore for session storage.');
+      
+      // Clean up failed client
+      if (redisClient) {
+        try {
+          await redisClient.disconnect();
+        } catch (disconnectError) {
+          // Ignore disconnect errors
+        }
+      }
+      
+      redisClient = null;
+      sessionStore = null;
+    }
+  }
+  
+  if (!sessionStore) {
+    console.warn('ℹ️  Using MemoryStore for session storage (not suitable for production with multiple instances)');
+  }
+}
+
+// Graceful shutdown handling
+const shutdown = async (signal) => {
+  console.log(`\n${signal} received, shutting down gracefully...`);
+  
+  if (redisClient) {
+    try {
+      await redisClient.quit();
+      console.log('✅ Redis client disconnected');
+    } catch (error) {
+      console.error('⚠️  Error disconnecting Redis client:', error.message);
+    }
+  }
+  
+  process.exit(0);
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 // Middleware
 app.use(express.json());
 app.use(cookieParser());
 
 // Session configuration
-// Note: Using MemoryStore for development. For production with multiple instances,
-// consider using a persistent store like connect-redis or @azure/storage-blob-session-store
-app.use(
-  session({
-    secret: config.sessionSecret,
-    resave: false,
-    saveUninitialized: false,
-    proxy: true,
-    cookie: {
-      httpOnly: true,
-      secure: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 24 * 60 * 60 * 1000, // 24 hours
-    },
-    name: 'session',
-  })
-);
+// Using Redis if enabled, otherwise MemoryStore for development/single-instance
+const sessionConfig = {
+  store: sessionStore, // RedisStore or undefined (defaults to MemoryStore)
+  secret: config.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  proxy: true,
+  cookie: {
+    httpOnly: true,
+    // secure should be true for HTTPS (production) and false for HTTP (local dev)
+    secure: config.baseUrl.startsWith('https://') || process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 24 * 60 * 60 * 1000, // 24 hours
+  },
+  name: 'session',
+};
+
+app.use(session(sessionConfig));
 
 // OIDC configuration
 let oidcConfig = null;
@@ -87,11 +180,6 @@ async function getOidcConfig() {
     throw error;
   }
 }
-
-// Initialize OIDC at startup
-getOidcConfig().catch((err) => {
-  console.error('Failed to initialize OIDC configuration:', err);
-});
 
 // Auth endpoints
 // Note: Rate limiting is handled by Azure App Service platform layer.
@@ -350,8 +438,24 @@ app.use((req, res) => {
   res.sendFile(join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(config.port, () => {
-  console.log(`🚀 Server is running on port ${config.port}`);
-  console.log(`   Visit ${config.baseUrl}`);
-  console.log(`   Callback URL: ${config.baseUrl}${config.callbackPath}`);
+// Initialize and start server
+async function startServer() {
+  // Initialize Redis (if configured)
+  await initializeRedis();
+  
+  // Initialize OIDC at startup
+  await getOidcConfig().catch((err) => {
+    console.error('Failed to initialize OIDC configuration:', err);
+  });
+  
+  app.listen(config.port, () => {
+    console.log(`🚀 Server is running on port ${config.port}`);
+    console.log(`   Visit ${config.baseUrl}`);
+    console.log(`   Callback URL: ${config.baseUrl}${config.callbackPath}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('Failed to start server:', err);
+  process.exit(1);
 });
