@@ -60,12 +60,29 @@ async function initializeRedis() {
       return;
     }
     
+    let initialConnectionSucceeded = false;
+    
     try {
       redisClient = createClient({
         url: config.redis.url,
         socket: {
-          connectTimeout: 5000, // 5 second timeout
-          reconnectStrategy: false, // Disable auto-reconnect during initial connection
+          connectTimeout: 5000, // 5 second timeout for initial connection
+          // Allow reconnection only after initial connection succeeds
+          // This helps handle transient network issues in production
+          reconnectStrategy: (retries) => {
+            if (!initialConnectionSucceeded) {
+              // Don't retry during initial connection
+              return false;
+            }
+            // Retry up to 10 times with exponential backoff
+            if (retries > 10) {
+              console.error('❌ Redis reconnection attempts exhausted');
+              return new Error('Too many retries');
+            }
+            const delay = Math.min(retries * 100, 3000);
+            console.log(`🔄 Retrying Redis connection in ${delay}ms (attempt ${retries + 1})`);
+            return delay;
+          },
         },
       });
 
@@ -79,9 +96,10 @@ async function initializeRedis() {
 
       redisClient.on('ready', () => {
         console.log('✅ Redis client connected and ready');
+        initialConnectionSucceeded = true;
       });
 
-      // Connect to Redis
+      // Connect to Redis with timeout for initial connection
       await redisClient.connect();
 
       // Initialize RedisStore
@@ -98,9 +116,9 @@ async function initializeRedis() {
       // Clean up failed client
       if (redisClient) {
         try {
-          await redisClient.disconnect();
-        } catch (disconnectError) {
-          // Ignore disconnect errors
+          await redisClient.quit();
+        } catch (quitError) {
+          // Ignore quit errors on failed connection
         }
       }
       
@@ -148,7 +166,8 @@ const sessionConfig = {
   cookie: {
     httpOnly: true,
     // secure should be true for HTTPS (production) and false for HTTP (local dev)
-    secure: config.baseUrl.startsWith('https://') || process.env.NODE_ENV === 'production',
+    // BASE_URL should be set to https:// in production, even behind a terminating proxy
+    secure: config.baseUrl.startsWith('https://'),
     sameSite: 'lax',
     path: '/',
     maxAge: 24 * 60 * 60 * 1000, // 24 hours
